@@ -474,6 +474,9 @@
         const appState = {
             currentTaskId: null,
             userProgress: {}, // { taskId: { A: 1, B: 0, ... score: 5 } }
+            playerName: 'Диана',
+            maxLives: 3,
+            lives: 3,
         };
 
         // --- CORE LOGIC ---
@@ -493,12 +496,23 @@
             loadProgress: () => {
                 const saved = localStorage.getItem('vpr_grammar_progress');
                 if (saved) {
-                    appState.userProgress = JSON.parse(saved);
+                    const parsed = JSON.parse(saved);
+                    if (parsed && parsed.userProgress) {
+                        appState.userProgress = parsed.userProgress;
+                        appState.lives = typeof parsed.lives === 'number' ? parsed.lives : appState.maxLives;
+                    } else {
+                        // Backward compatibility for old format where only progress was stored.
+                        appState.userProgress = parsed;
+                        appState.lives = appState.maxLives;
+                    }
                 }
             },
 
             saveProgress: () => {
-                localStorage.setItem('vpr_grammar_progress', JSON.stringify(appState.userProgress));
+                localStorage.setItem('vpr_grammar_progress', JSON.stringify({
+                    userProgress: appState.userProgress,
+                    lives: appState.lives
+                }));
                 app.renderSidebarProgress();
             },
 
@@ -549,11 +563,12 @@
                     <div class="max-w-5xl mx-auto p-6 md:p-10">
                         <!-- Welcome Section -->
                         <div class="mb-10 text-center">
-                            <h2 class="text-4xl font-serif font-bold text-stone-800 mb-4">Welcome to Your Grammar Quest</h2>
+                            <h2 class="text-4xl font-serif font-bold text-stone-800 mb-4">${appState.playerName}, welcome to your Grammar Quest ✨</h2>
                             <p class="text-lg text-stone-600 max-w-2xl mx-auto">
                                 Master the 7th-grade VPR English grammar exam through interactive practice. 
                                 Select a task from the sidebar to begin.
                             </p>
+                            <p class="text-sm font-semibold text-amber-700 mt-3">Ты справишься, ${appState.playerName}! У тебя ${appState.lives}/${appState.maxLives} жизни.</p>
                         </div>
 
                         <!-- Stats Grid -->
@@ -569,6 +584,10 @@
                             <div class="bg-white p-6 rounded-xl shadow-sm border border-stone-200 text-center">
                                 <p class="text-stone-500 text-sm uppercase font-bold tracking-wider">Accuracy</p>
                                 <p class="text-4xl font-bold ${accuracy >= 80 ? 'text-green-600' : 'text-blue-600'} mt-2">${accuracy}%</p>
+                            </div>
+                            <div class="bg-white p-6 rounded-xl shadow-sm border border-stone-200 text-center md:col-span-3">
+                                <p class="text-stone-500 text-sm uppercase font-bold tracking-wider">Lives</p>
+                                <p class="text-3xl font-bold text-red-500 mt-2">${'❤️'.repeat(appState.lives)}${'🩶'.repeat(Math.max(0, appState.maxLives - appState.lives))}</p>
                             </div>
                         </div>
 
@@ -722,6 +741,9 @@
                             </div>
 
                             <div class="mt-6 pt-6 border-t border-stone-100">
+                                <div class="mb-3 text-center text-sm font-semibold text-stone-600">
+                                    Lives: <span class="text-red-500">${'❤️'.repeat(appState.lives)}${'🩶'.repeat(Math.max(0, appState.maxLives - appState.lives))}</span>
+                                </div>
                                 <button onclick="app.checkAnswers(${id})" class="w-full bg-amber-600 hover:bg-amber-700 text-white font-bold py-4 rounded-xl shadow-lg transition-all active:scale-95 flex justify-center items-center">
                                     <span>Check Answers</span>
                                 </button>
@@ -782,6 +804,19 @@
                 // Let's modify appState directly but not mark 'score' yet.
                 if (!appState.userProgress[taskId]) appState.userProgress[taskId] = { answers: {}, score: 0 };
                 appState.userProgress[taskId].answers[key] = idx;
+                app.saveProgress();
+            },
+
+            resetPreviousLevels: (currentId) => {
+                const resetIds = [currentId - 1, currentId - 2, currentId - 3].filter(levelId => levelId >= 1);
+                resetIds.forEach(levelId => {
+                    delete appState.userProgress[levelId];
+                });
+                appState.lives = appState.maxLives;
+                app.saveProgress();
+                app.renderSidebar();
+
+                return resetIds;
             },
 
             selectGap: (key) => {
@@ -802,6 +837,9 @@
                 
                 let score = 0;
                 let allCorrect = true;
+                if (!appState.userProgress[id]) {
+                    appState.userProgress[id] = { answers: {}, score: 0 };
+                }
 
                 // Validate
                 Object.keys(task.questions).forEach(key => {
@@ -837,9 +875,19 @@
                         </div>
                     `;
                 } else {
+                    appState.lives = Math.max(0, appState.lives - 1);
+                    let extraMessage = `<span class="text-xs font-normal">Lives left: ${appState.lives}/${appState.maxLives}. Review the red items and try again!</span>`;
+
+                    if (appState.lives === 0) {
+                        const resetLevels = app.resetPreviousLevels(id);
+                        extraMessage = `<span class="text-xs font-normal">Ты использовала все жизни. Начинай заново с уровней: ${resetLevels.sort((a, b) => a - b).join(', ') || '1'}. Жизни восстановлены до ${appState.maxLives}.</span>`;
+                    } else {
+                        app.saveProgress();
+                    }
+
                     feedback.innerHTML = `
                         <div class="bg-amber-100 text-amber-800 p-3 rounded-lg font-bold border border-amber-200">
-                            You got ${score}/5 correct. <br> <span class="text-xs font-normal">Review the red items and try again!</span>
+                            You got ${score}/5 correct. <br> ${extraMessage}
                         </div>
                     `;
                 }
