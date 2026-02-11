@@ -1,0 +1,854 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>English Grammar Quest | VPR 7th Grade</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700&family=Lora:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet">
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        stone: {
+                            50: '#fafaf9',
+                            100: '#f5f5f4',
+                            200: '#e7e5e4',
+                            300: '#d6d3d1',
+                            400: '#a8a29e',
+                            600: '#57534e',
+                            800: '#292524',
+                            900: '#1c1917',
+                        },
+                        amber: {
+                            50: '#fffbeb',
+                            100: '#fef3c7',
+                            500: '#f59e0b',
+                            600: '#d97706',
+                            700: '#b45309',
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Nunito', 'sans-serif'],
+                        serif: ['Lora', 'serif'],
+                    }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        body {
+            background-color: #f5f5f4; /* stone-100 */
+        }
+        
+        .gap-slot {
+            display: inline-block;
+            min-width: 60px;
+            border-bottom: 2px solid #d6d3d1;
+            color: #57534e;
+            text-align: center;
+            padding: 0 4px;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-weight: bold;
+            border-radius: 4px;
+        }
+
+        .gap-slot:hover {
+            background-color: #e7e5e4;
+            color: #b45309;
+            border-bottom-color: #b45309;
+        }
+
+        .gap-slot.filled {
+            color: #292524;
+            border-bottom: 2px solid #57534e;
+        }
+
+        .gap-slot.correct {
+            color: #15803d; /* green-700 */
+            border-bottom-color: #15803d;
+            background-color: #dcfce7;
+        }
+
+        .gap-slot.incorrect {
+            color: #b91c1c; /* red-700 */
+            border-bottom-color: #b91c1c;
+            background-color: #fee2e2;
+        }
+
+        .chart-container {
+            position: relative;
+            width: 100%;
+            height: 250px;
+            max-width: 100%;
+        }
+
+        /* Custom Scrollbar for sidebar */
+        .custom-scroll::-webkit-scrollbar {
+            width: 6px;
+        }
+        .custom-scroll::-webkit-scrollbar-track {
+            background: #f1f1f1; 
+        }
+        .custom-scroll::-webkit-scrollbar-thumb {
+            background: #d6d3d1; 
+            border-radius: 3px;
+        }
+        .custom-scroll::-webkit-scrollbar-thumb:hover {
+            background: #a8a29e; 
+        }
+    </style>
+    
+    <!-- Chosen Palette: Warm Neutrals (Stone & Amber) -->
+    <!-- Application Structure Plan:
+         The app uses a dashboard layout with a persistent sidebar for navigation across all 26 tasks. 
+         This allows non-linear exploration.
+         - 'Home' view provides a high-level summary using charts to visualize progress (Inform/Organize).
+         - 'Practice' view splits the screen: Readable text on the left, Interactive inputs on the right/bottom.
+         - Reason: Separation of reading context and mechanical selection helps focus.
+         - Gamification elements (Score/Streak) encourage engagement.
+    -->
+    <!-- Visualization & Content Choices:
+         - Progress Charts (Chart.js): Visualizes 'Tasks Completed' vs 'Remaining' and 'Success Rate'. Goal: Motivation.
+         - Interactive Gaps: Inline HTML elements that trigger selection states. Goal: Active Recall.
+         - Feedback System: Immediate visual validation (Green/Red). Goal: Learning reinforcement.
+         - NO SVG/Mermaid used. FontAwesome icons represented by Unicode or simple CSS shapes if needed, but here using Unicode characters.
+    -->
+    <!-- CONFIRMATION: NO SVG graphics used. NO Mermaid JS used. -->
+
+</head>
+<body class="text-stone-800 antialiased h-screen flex flex-col md:flex-row overflow-hidden">
+
+    <!-- Mobile Header -->
+    <div class="md:hidden bg-white p-4 shadow-md flex justify-between items-center z-10">
+        <h1 class="font-serif font-bold text-xl text-amber-700">Grammar Quest</h1>
+        <button id="mobile-menu-btn" class="text-stone-600 focus:outline-none">
+            &#9776; <!-- Hamburger Icon -->
+        </button>
+    </div>
+
+    <!-- Sidebar Navigation -->
+    <nav id="sidebar" class="bg-white w-full md:w-64 flex-shrink-0 border-r border-stone-200 flex flex-col h-full transform -translate-x-full md:translate-x-0 transition-transform duration-300 absolute md:relative z-20 shadow-xl md:shadow-none">
+        <div class="p-6 border-b border-stone-100 hidden md:block">
+            <h1 class="font-serif font-bold text-2xl text-amber-700 tracking-tight">Grammar Quest</h1>
+            <p class="text-xs text-stone-500 mt-1 uppercase tracking-wide">VPR Grade 7</p>
+        </div>
+
+        <!-- Scrollable Task List -->
+        <div class="flex-1 overflow-y-auto custom-scroll p-4">
+            <button onclick="app.renderDashboard()" class="w-full text-left px-4 py-3 rounded-lg mb-2 flex items-center transition-colors hover:bg-amber-50 text-stone-700 font-semibold" id="nav-dashboard">
+                <span class="mr-3">📊</span> Dashboard
+            </button>
+            
+            <div class="mt-4 mb-2 px-2">
+                <span class="text-xs font-bold text-stone-400 uppercase">Exercises</span>
+            </div>
+
+            <div id="task-list" class="space-y-1">
+                <!-- Task items injected by JS -->
+            </div>
+        </div>
+
+        <!-- User Stats Footer -->
+        <div class="p-4 border-t border-stone-100 bg-stone-50">
+            <div class="flex justify-between text-sm mb-1">
+                <span class="text-stone-500">Completed</span>
+                <span id="mini-progress-text" class="font-bold text-amber-700">0/26</span>
+            </div>
+            <div class="w-full bg-stone-200 rounded-full h-2">
+                <div id="mini-progress-bar" class="bg-amber-500 h-2 rounded-full transition-all duration-500" style="width: 0%"></div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 h-full overflow-y-auto bg-stone-50 relative custom-scroll" id="main-content">
+        <!-- Content injected by JS -->
+    </main>
+
+    <!-- JavaScript Logic -->
+    <script>
+        // --- DATA STORE ---
+        // Complete database of the 26 tasks from the PDF
+        const grammarData = [
+            {
+                id: 1, type: "3", num: "1691", title: "At the theatre",
+                text: "My mother goes to the theatre whenever she can. When a new play is on, she usually reads the review on the Internet to find out {A} about the play. Last week a new comedy was staged at the city theatre. The reviews on the Internet {B} it was very good. My father {C} comedies. So, my mom and I {D} the theatre without him. Unfortunately, we were a little late. We missed the beginning, but the rest of the play {E} very funny. The actors were very good. The reviews on the Internet were right. We enjoyed every minute of the performance.",
+                questions: {
+                    A: { options: ["much", "more", "many", "most"], ans: 1 }, // more (index 1)
+                    B: { options: ["says", "said", "were saying", "has said"], ans: 1 }, // said
+                    C: { options: ["don't like", "likes", "doesn't like", "liked"], ans: 2 }, // doesn't like
+                    D: { options: ["have gone", "are going", "will go", "went"], ans: 3 }, // went
+                    E: { options: ["was", "is", "will be", "were"], ans: 0 } // was
+                }
+            },
+            {
+                id: 2, type: "3", num: "2427", title: "The wind and the sun",
+                text: "The wind and the sun argued one day over which one was the strongest. They saw a man walking along the road and they wanted to see which one could take the coat from the {A} back the quickest. The wind {B} to blow. He blew strong gusts of air, but the man kept the coat tight against {C}. The wind blew still {D} but the man held his coat tightly. The wind could not take the coat from the man. It was now the sun's turn. The sun did very little, just quietly shone upon the man until he became so warm that he {E} off his coat.",
+                questions: {
+                    A: { options: ["traveller", "travellers", "traveller's", "travellers'"], ans: 2 }, // traveller's
+                    B: { options: ["began", "begun", "begins", "begin"], ans: 0 }, // began
+                    C: { options: ["his", "him", "them", "they"], ans: 1 }, // him
+                    D: { options: ["harder", "hardly", "hardest", "more hard"], ans: 0 }, // harder
+                    E: { options: ["takes", "has taken", "was taking", "took"], ans: 3 } // took
+                }
+            },
+            {
+                id: 3, type: "3", num: "2433", title: "The wolf and the goat",
+                text: "A hungry wolf was out searching for a meal. He {A} a goat feeding on grass on top of a high cliff. The wolf wanted to get the goat to climb down from the rock. «Excuse me, dear Goat, he said in a friendly voice. It is very dangerous for you to be at such a height. Please, come down before you hurt {B}. Besides, the grass is much {C} down here. Take my advice, and please come down from that high cliff.» But the goat {D} too well the wolf's habits. «You {E} if I eat good grass or bad. What you care about is eating me.»",
+                questions: {
+                    A: { options: ["sees", "saw", "has seen", "was seeing"], ans: 1 }, // saw
+                    B: { options: ["oneself", "yourself", "myself", "himself"], ans: 1 }, // yourself
+                    C: { options: ["greener", "green", "less green", "greenest"], ans: 0 }, // greener
+                    D: { options: ["knows", "has known", "know", "knew"], ans: 3 }, // knew
+                    E: { options: ["doesn't care", "hasn't cared", "don't care", "didn't care"], ans: 2 } // don't care
+                }
+            },
+            {
+                id: 4, type: "3", num: "2443", title: "An Indian girl",
+                text: "Zita is twelve years old and she lives in India. She has long dark hair and beautiful eyes. Zita goes to school and studies very hard. She reads {A} books because she wants to be clever and get a good education. Her parents are very happy with her school results. {B} are proud of her. Zita is the {C} student in the class. Zita often thinks about her future. She thinks that she {D} a doctor when she grows up. She understands how important doctors are because last year she {E} ill with the flu and had to see a doctor. A kind doctor helped her to get better very quickly. Zita wants to help people too. She is a very kind girl.",
+                questions: {
+                    A: { options: ["little", "few", "a lot of", "much"], ans: 2 }, // a lot of
+                    B: { options: ["they", "them", "their", "themselves"], ans: 0 }, // they
+                    C: { options: ["good", "better", "best", "most good"], ans: 2 }, // best
+                    D: { options: ["becomes", "became", "has become", "will become"], ans: 3 }, // will become
+                    E: { options: ["is", "was", "are", "were"], ans: 1 } // was
+                }
+            },
+            {
+                id: 5, type: "3", num: "2449", title: "The Golden Egg",
+                text: "Once upon a time, there lived a man in a village. He had a wife and children. He {A} quite well-off because he had a magic hen. This hen laid an egg each day, but it was not a usual egg, it was a golden egg. Still, the man {B} he was unhappy. He wanted to be {C} than he already was. So, he decided to kill the hen and get all the golden eggs at once. But when he killed his magic hen, he {D} find any eggs there, either golden or ordinary ones. From that day on, the man was becoming poorer and poorer because he destroyed his own happiness {E}. One should be satisfied with what one has.",
+                questions: {
+                    A: { options: ["is", "are", "was", "were"], ans: 2 }, // was
+                    B: { options: ["thought", "was thinking", "has thought", "thinked"], ans: 0 }, // thought
+                    C: { options: ["rich", "richer", "more richer", "most rich"], ans: 1 }, // richer
+                    D: { options: ["can", "can't", "could", "couldn't"], ans: 3 }, // couldn't
+                    E: { options: ["he", "him", "his", "himself"], ans: 3 } // himself
+                }
+            },
+            {
+                id: 6, type: "3", num: "2456", title: "The Ant and the Butterfly",
+                text: "Once upon a time there lived an ant and a butterfly. They were two {A} friends. At the same time, they {B} their time differently. The butterfly liked to relax the whole day and play his guitar. While he {C} it, the ant was working hard all day. He collected food from all corners of the garden. Every day the butterfly told the ant to take a break, but the ant still worked hard. Soon, winter came. The days and nights became cold and very {D} creatures went out. The butterfly {E} find any food and was hungry all the time. However, the ant had enough food for him to last through the winter without any worries at all. You should always take care of your future.",
+                questions: {
+                    A: { options: ["the best", "better", "more better", "best"], ans: 3 }, // best
+                    B: { options: ["spend", "spent", "was spending", "has spent"], ans: 1 }, // spent
+                    C: { options: ["does", "did", "was doing", "has done"], ans: 2 }, // was doing
+                    D: { options: ["few", "little", "many", "much"], ans: 0 }, // few
+                    E: { options: ["can", "can't", "could", "couldn't"], ans: 3 } // couldn't
+                }
+            },
+            {
+                id: 7, type: "3", num: "2469", title: "London today",
+                text: "London is the capital of Great Britain. It is a big city with more than twelve million inhabitants. It is one of the {A} greatest cities and also one of the most visited cities in Europe. In 2016 the number of visitors to London hit a new record of 37,3 million. Like in many cities, transport is one of the {B} problems. There is a lot of traffic, so it is sometimes {C} to travel short distances on foot. The underground {D} a huge area but it is more than 150 years old. A few years ago, the city {E} making drivers pay to bring cars into the city. This has helped to reduce the traffic problems a bit.",
+                questions: {
+                    A: { options: ["world", "worlds", "world's", "worlds'"], ans: 2 }, // world's
+                    B: { options: ["biggest", "big", "most big", "bigger"], ans: 0 }, // biggest
+                    C: { options: ["quick", "quicker", "quickly", "quickest"], ans: 1 }, // quicker
+                    D: { options: ["covered", "have covered", "cover", "covers"], ans: 3 }, // covers
+                    E: { options: ["begins", "began", "is beginning", "has begun"], ans: 1 } // began
+                }
+            },
+            {
+                id: 8, type: "3", num: "2484", title: "A British boy",
+                text: "Peter Watson is twelve years old and he lives in London, the UK. He goes to school. He is very busy because at school he studies {A} subjects such as English and Math. He also studies a foreign language. He studies Russian. Peter's parents are very happy with his choice. {B} think Russia is a great country. Russian is a very difficult language but now Peter {C} read and write in Russian very well. Peter likes Russian. For him Russian is the {D} language in the world. Last year Peter {E} to Russia on an exchange programme. He spent two weeks in Moscow and made some friends there. He hopes to visit Russia again in the future.",
+                questions: {
+                    A: { options: ["little", "few", "many", "much"], ans: 2 }, // many
+                    B: { options: ["they", "them", "their", "themselves"], ans: 0 }, // they
+                    C: { options: ["can", "can't", "could", "couldn't"], ans: 0 }, // can
+                    D: { options: ["interesting", "more interesting", "less interesting", "most interesting"], ans: 3 }, // most interesting
+                    E: { options: ["go", "went", "had gone", "will go"], ans: 1 } // went
+                }
+            },
+            {
+                id: 9, type: "3", num: "2490", title: "A cat and a rooster",
+                text: "Do you know this story? Once a cat {A} a rooster for the evening meal. The cat wanted a good excuse for killing the bird. «I need to rid the world of you,» she told the rooster. «You constantly make your horrible noises throughout the night, interrupting {B} sleep. The world will be {C} off without you.» «No,» said the rooster, «I crow for the good of the people. I wake {D} up each morning when it is time to start work for the day, so that they may earn their living.» «What a fool!» said the cat and {E} the bird.",
+                questions: {
+                    A: { options: ["catches", "caught", "will catch", "was catching"], ans: 1 }, // caught
+                    B: { options: ["people", "peoples", "people's", "peoples'"], ans: 2 }, // people's
+                    C: { options: ["good", "best", "well", "better"], ans: 3 }, // better
+                    D: { options: ["they", "them", "their", "theirs"], ans: 1 }, // them
+                    E: { options: ["was eating", "has eaten", "ate", "eats"], ans: 2 } // ate
+                }
+            },
+            {
+                id: 10, type: "3", num: "2502", title: "Mary and Her Milk",
+                text: "Mary was a farmer. Once the woman finished milking {A} cow and saw that there was too much milk. So Mary thought she {B} sell it. In the afternoon she {C} to the market. On her way she {D} what to do with the money. \"When I get the money, I will buy some chickens. Then they will grow and lay eggs. I will sell them for more money. Then I'll buy the house on the hill and will be the {E} woman in the village.\" Suddenly Mary fell down because of a big stone on the way which she hadn't noticed and spilt the milk.",
+                questions: {
+                    A: { options: ["she", "herself", "hers", "her"], ans: 3 }, // her
+                    B: { options: ["can", "can't", "could", "couldn't"], ans: 2 }, // could
+                    C: { options: ["goes", "went", "has gone", "will go"], ans: 1 }, // went
+                    D: { options: ["was thinking", "thought", "has thought", "will think"], ans: 0 }, // was thinking
+                    E: { options: ["rich", "richer", "richest", "most rich"], ans: 2 } // richest
+                }
+            },
+            {
+                id: 11, type: "3", num: "2518", title: "A Good Lesson",
+                text: "Once upon a time there lived two friends. They often had to go to the forest and they promised each other to stay together in any case. One day they {A} through the forest when they heard a strange noise. Then they {B} a horrible bear. This was the {C} bear they had ever seen. One of the friends started to climb a tree very quickly but the other friend {D} climb trees. So he lay down on the ground and pretended that he was dead. The bear went away and the first friend decided to come down from the tree. \"What did the bear tell {E}?\" he asked. The other friend replied, \"The bear told me never to trust a false friend.\"",
+                questions: {
+                    A: { options: ["walked", "were walking", "has walked", "will walk"], ans: 1 }, // were walking
+                    B: { options: ["see", "saw", "has seen", "will see"], ans: 1 }, // saw
+                    C: { options: ["dangerous", "more dangerous", "most dangerous", "dangerouser"], ans: 2 }, // most dangerous
+                    D: { options: ["can", "can't", "could", "couldn't"], ans: 3 }, // couldn't
+                    E: { options: ["you", "your", "yours", "yourself"], ans: 0 } // you
+                }
+            },
+            {
+                id: 12, type: "3", num: "2524", title: "History of London",
+                text: "The history of London goes back thousands of years. In those ancient times the first inhabitants, Celtic tribes, made {A} homes on the river Thames. Next {B} Germanic tribes the Angles, the Saxons and the Jutes. In 43 AD the Romans invaded Britain. They {C} a bridge across the Thames. {D} they decided it was a good place to build a port. Around 50 AD the Romans founded a town by the bridge. Its name is derived from the Celtic word \"Londinios,\" which {E} the place of the brave. So, London was born.",
+                questions: {
+                    A: { options: ["theirs", "they", "their", "them"], ans: 2 }, // their
+                    B: { options: ["comes", "came", "was coming", "have come"], ans: 1 }, // came
+                    C: { options: ["build", "were building", "built", "have built"], ans: 2 }, // built
+                    D: { options: ["Later", "Late", "Last", "Latest"], ans: 0 }, // Later
+                    E: { options: ["mean", "has meant", "means", "is meaning"], ans: 2 } // means
+                }
+            },
+            {
+                id: 13, type: "3", num: "2536", title: "The Eiffel Tower",
+                text: "What do you know about the Eiffel Tower? It {A} on the banks of the Seine River in Paris. The construction {B} in 1886. The engineers prepared 12,000 separate iron pieces and then fit {C} together with nails. It took three years to finish the work. Its initial purpose was to broadcast radio signals. Since then, it {D} the symbol of Paris. Today the tower is popular with tourists. You can go to the top floor to enjoy the {E} view of Paris.",
+                questions: {
+                    A: { options: ["locates", "is located", "will be located", "was located"], ans: 1 }, // is located
+                    B: { options: ["began", "begins", "has begun", "is beginning"], ans: 0 }, // began
+                    C: { options: ["they", "their", "theirs", "them"], ans: 3 }, // them
+                    D: { options: ["became", "becomes", "has become", "is becoming"], ans: 2 }, // has become
+                    E: { options: ["good", "best", "well", "better"], ans: 1 } // best
+                }
+            },
+            {
+                id: 14, type: "3", num: "2542", title: "The Golden Touch",
+                text: "Once upon a time there lived a rich man. He had a lot of money and a big house but he wanted to be even {A} than he already was. One day the man {B} a fairy. The fairy needed help and he helped her. When she asked him what she {C} do for him, he asked for a very unusual thing. He wanted his hand to have a golden touch. \"Everything that you touch {D} into gold,\" the fairy said and flew away. The man tried his new magical power and was happy. He went home. As his young daughter saw that he {E} home, she ran to her father. He took her in his arms and his golden touch turned the girl into gold. You see, it's wrong to wish to have too much.",
+                questions: {
+                    A: { options: ["rich", "richer", "more rich", "richest"], ans: 1 }, // richer
+                    B: { options: ["met", "was meeting", "has met", "will meet"], ans: 0 }, // met
+                    C: { options: ["can", "can't", "could", "couldn't"], ans: 2 }, // could
+                    D: { options: ["turn", "turned", "has turned", "will turn"], ans: 3 }, // will turn
+                    E: { options: ["comes", "was coming", "is coming", "came"], ans: 3 } // came
+                }
+            },
+            {
+                id: 15, type: "3", num: "2554", title: "Pocket money",
+                text: "Some years ago an ice-cream company in Britain did an interesting survey. They needed information on {A} pocket money. They {B} out that 11 million children in Britain aged five to sixteen spend over £13 million each week. Some of the money comes from parents but some children also earn small amounts. It is against the law for children in Britain to work {C} than two hours on a school day. But on Saturdays they can work {D} hours. Jobs such as delivering daily newspapers or working in shops and supermarkets {E} popular with teenagers.",
+                questions: {
+                    A: { options: ["child's", "child", "children's", "children"], ans: 2 }, // children's
+                    B: { options: ["found", "find", "were finding", "founded"], ans: 0 }, // found
+                    C: { options: ["much", "more", "many", "most"], ans: 1 }, // more
+                    D: { options: ["longer", "long", "less long", "longest"], ans: 0 }, // longer
+                    E: { options: ["were", "is", "will be", "are"], ans: 3 } // are
+                }
+            },
+            {
+                id: 16, type: "3", num: "2578", title: "My pets",
+                text: "I'm only ten but I know what I am going to be in the future. I love animals and I want to be a vet, I want to treat animals. I have two pets: a dog and a parrot. I take care of {A}. My little sister Alice is two years {B} than I am. She often {C} me. She feeds the parrot and walks with our dog. I read a lot of books about animals to learn how to feed and to treat different animals. Last summer I {D} to my grandpa to the country. I helped him with the cow and chickens. I enjoyed it very {E}.",
+                questions: {
+                    A: { options: ["theirs", "they", "their", "them"], ans: 3 }, // them
+                    B: { options: ["younger", "elder", "young", "youngest"], ans: 0 }, // younger
+                    C: { options: ["helped", "is helping", "helps", "will help"], ans: 2 }, // helps
+                    D: { options: ["go", "went", "was going", "has gone"], ans: 1 }, // went
+                    E: { options: ["much", "more", "many", "little"], ans: 0 } // much
+                }
+            },
+            {
+                id: 17, type: "3", num: "2591", title: "What Are You Like?",
+                text: "This is a story about a little girl Mary. Mary was {A} than other girls of that age and she often asked questions. One day Mary asked {B} father how to behave in a difficult situation. Mary's father {C} an egg, a potato and some tea leaves into three different pans full of water and put the pans on the stove. He asked Mary to keep an eye on {D} three pans for ten minutes. When the ten minutes were over, he asked Mary to see what had happened. Mary saw that the potato was soft, the egg was hard and the tea leaves had turned water into tea. Mary's father said, \"The things were in the same situation, but they behaved differently. People are just the same. Some people {E} get hard, somebody will get soft and somebody will change the situation. What are you like?\"",
+                questions: {
+                    A: { options: ["clever", "cleverer", "cleverest", "most clever"], ans: 1 }, // cleverer
+                    B: { options: ["his", "hers", "her", "herself"], ans: 2 }, // her
+                    C: { options: ["puts", "put", "will put", "has put"], ans: 1 }, // put
+                    D: { options: ["this", "that", "than", "those"], ans: 3 }, // those
+                    E: { options: ["can", "can't", "could", "couldn't"], ans: 0 } // can
+                }
+            },
+            {
+                id: 18, type: "3", num: "2603", title: "\"I'll do it later\"",
+                text: "Life is the best teacher. At the end of her first year at college, my sister Kerrie who is 3 years {A} than me decided to stay in town for the summer to work. However, she {B} stay at the college hostel because she didn't take any summer courses. She {C} to rent a room in town and, to save money, she shared it with her friend. So, she moved in with a roommate, but after a week she called {D}: \"Sister, it was the {E} week in my life. I just wanted to apologize,\" she said. \"Apologize for what?\" I asked. \"For all those times I said to you, 'I'll do it later'.\"",
+                questions: {
+                    A: { options: ["younger", "more young", "young", "youngest"], ans: 0 }, // younger
+                    B: { options: ["couldn't", "can't", "doesn't", "don't"], ans: 0 }, // couldn't
+                    C: { options: ["has", "will have", "must", "had"], ans: 3 }, // had
+                    D: { options: ["I", "my", "me", "mine"], ans: 2 }, // me
+                    E: { options: ["bad", "worst", "best", "worse"], ans: 1 } // worst
+                }
+            },
+            {
+                id: 19, type: "3", num: "2609", title: "At the zoo",
+                text: "I like animals and I want to be a vet. I go to the zoo when I have some spare time to watch the behavior of {A} favourite animal. It is a panda bear. It is one of the {B} animals in the world. It {C} in China in the jungle. It is a big animal up to two meters tall. It has got a coat of long black and white fur. It eats bamboo, plants and sometimes fish. It is very funny. My little sister Annie who is three years {D} than I am, often goes to the zoo with me. She {E} to be a vet, she'd like to be an actress.",
+                questions: {
+                    A: { options: ["mine", "my", "our", "ours"], ans: 1 }, // my
+                    B: { options: ["rarer", "less rare", "rare", "rarest"], ans: 3 }, // rarest
+                    C: { options: ["has lived", "is living", "lives", "lived"], ans: 2 }, // lives
+                    D: { options: ["younger", "elder", "young", "youngest"], ans: 0 }, // younger
+                    E: { options: ["wants", "doesn't want", "didn't want", "wanted"], ans: 1 } // doesn't want
+                }
+            },
+            {
+                id: 20, type: "3", num: "2621", title: "The Magical Tree",
+                text: "There were once two brothers, Jake and Mike, who lived near a forest. The elder brother Jake {A} a bad person. He {B} up all the food and took all the good clothes from Mike. One day, Jake went into the forest to find some wood to sell at the market. As he {C} through the forest, he saw a magical tree. The tree promised to give him its golden apples if he didn't cut it. Jake agreed but then he thought the tree had given him too {D} apples. But when he told the tree about it, the tree punished him by beating him. Mike found his brother and helped him. Jake was ashamed. When the tree saw it, it gave the brothers all the apples they {E} take home. You see, it's not a good idea to wish too much.",
+                questions: {
+                    A: { options: ["will be", "was", "were", "has been"], ans: 1 }, // was
+                    B: { options: ["ate", "was eating", "will eat", "has eaten"], ans: 0 }, // ate
+                    C: { options: ["walks", "will walk", "has walked", "was walking"], ans: 3 }, // was walking
+                    D: { options: ["few", "little", "much", "many"], ans: 0 }, // few
+                    E: { options: ["can", "can't", "could", "couldn't"], ans: 2 } // could
+                }
+            },
+            {
+                id: 21, type: "3", num: "3217", title: "Betty Smith",
+                text: "Betty Smith is thirteen, and she is a schoolgirl. She lives in Bristol, the UK. She wants to be a ballerina. She {A} fond of dancing for a long time. She started attending dancing classes when she {B} only five years old. Every day she spends {C} time in the dancing class. It can be four or five hours because she has to do a lot of different tasks set by her teacher. She also listens to classical music every day. Her parents are proud of Betty. {D} go to every performance which Betty takes part in. Betty is the {E} student in her dancing class that is why she often takes part in different dancing competitions. She has won a lot of prizes already.",
+                questions: {
+                    A: { options: ["is", "was", "has been", "will be"], ans: 2 }, // has been
+                    B: { options: ["is", "was", "are", "were"], ans: 1 }, // was
+                    C: { options: ["little", "few", "many", "a lot of"], ans: 3 }, // a lot of
+                    D: { options: ["they", "them", "their", "themselves"], ans: 0 }, // they
+                    E: { options: ["good", "better", "best", "most good"], ans: 2 } // best
+                }
+            },
+            {
+                id: 22, type: "3", num: "3229", title: "My father",
+                text: "My father is a doctor. He helps people become healthy and strong. He likes his job and he enjoys saving {A} lives. When he was a small boy, he wanted to become a pilot. He wanted to visit foreign countries and make new friends. But when my father grew {B}, he understood that choosing a future career is a serious problem. So, when he {C} school, he faced that problem. And finally, he decided to become a doctor. His parents supported his choice because they {D} the profession of a pilot was dangerous. As for {E}, I think my father has made the right decision.",
+                questions: {
+                    A: { options: ["people", "peoples", "people's", "peoples'"], ans: 2 }, // people's
+                    B: { options: ["old", "elder", "older", "oldest"], ans: 2 }, // older
+                    C: { options: ["have left", "is living", "will leave", "left"], ans: 3 }, // left
+                    D: { options: ["thought", "think", "were thinking", "have thought"], ans: 0 }, // thought
+                    E: { options: ["my", "me", "mine", "I"], ans: 1 } // me
+                }
+            },
+            {
+                id: 23, type: "3", num: "3700", title: "The Lion and the Elephant",
+                text: "Once upon a time there lived Lion. He was afraid of nothing but chickens. One day he {A} his friend Elephant about his fear. Elephant thought he had never heard a {B} joke than that one. He started making fun of Lion, \"You are so big and you are afraid of small chickens!\" While he {C} at the Lion, he saw a mosquito. Then another mosquito flew and then one more. Elephant started crying. It turned out that the Elephant {D} afraid of small mosquitoes. It helped both Lion and Elephant see these fears as others see {E}. The animals realized that most of fears make no sense.",
+                questions: {
+                    A: { options: ["tell", "told", "was told", "has told"], ans: 1 }, // told
+                    B: { options: ["good", "better", "more good", "best"], ans: 1 }, // better
+                    C: { options: ["laugh", "laughed", "was laughing", "has laughed"], ans: 2 }, // was laughing
+                    D: { options: ["are", "will be", "were", "was"], ans: 3 }, // was
+                    E: { options: ["them", "themselves", "they", "their"], ans: 0 } // them
+                }
+            },
+            {
+                id: 24, type: "3", num: "3709", title: "Billy Green",
+                text: "Billy Green lives in London, the UK. He is a rap singer. He is one of the most famous rappers in the world. He gives {A} concerts all over the world because he is very popular and people want to listen to his songs. {B} come to his concerts and enjoy his music. Last week Billy Green {C} to Moscow to give a concert there. He spent only three days in Moscow so he {D} see all the sights of the city. Still, Billy Green liked Moscow very much. In his interview he said it was the {E} city he had ever visited. He wants to return to Moscow as a tourist one day and see all the beautiful places of the Russian capital.",
+                questions: {
+                    A: { options: ["little", "few", "many", "much"], ans: 2 }, // many
+                    B: { options: ["They", "Them", "Their", "Themselves"], ans: 0 }, // They
+                    C: { options: ["go", "went", "has gone", "will go"], ans: 1 }, // went
+                    D: { options: ["can", "can't", "could", "couldn't"], ans: 3 }, // couldn't
+                    E: { options: ["good", "better", "best", "most good"], ans: 2 } // best
+                }
+            },
+            {
+                id: 25, type: "3", num: "3716", title: "Traffic in London",
+                text: "Yesterday my parents and I returned from our trip to London. It was my dream to visit London and my dream {A} true last month. When we were in London, we walked a lot and I learnt a lot about the history of London. But {B} of all I was surprised to learn the British traffic rule \"Keep left.\" In Britain the traffic {C} to the left, and not to the right as in European countries. So, when you want to cross the street, you must first look to the right and then to the left. As for me, at first I was afraid to cross the roads by {D}. {E} I got used to this rule.",
+                questions: {
+                    A: { options: ["comes", "came", "was coming", "has come"], ans: 1 }, // came
+                    B: { options: ["much", "more", "many", "most"], ans: 3 }, // most
+                    C: { options: ["kept", "keeps", "was keeping", "has kept"], ans: 1 }, // keeps
+                    D: { options: ["oneself", "ourselves", "myself", "himself"], ans: 2 }, // myself
+                    E: { options: ["Later", "Late", "Last", "Latest"], ans: 0 } // Later
+                }
+            },
+            {
+                id: 26, type: "3", num: "3728", title: "London Zoo",
+                text: "My favourite place in London is London Zoo. It is the world's {A} scientific zoo. It {B} in 1828. At that time it housed a collection of exotic animals that were studied by scientists. Nowadays the collection is even {C}. In the African section you can come face to face with some of Africa's most unusual animals including zebras and hunting dogs. Make sure you {D} feeding time at the Penguin section. Find out more about these popular creatures from the zoo's keepers. With over 12,000 animals to see every visitor enjoys {E} the tour of the Zoo.",
+                questions: {
+                    A: { options: ["older", "elder", "eldest", "oldest"], ans: 3 }, // oldest
+                    B: { options: ["opens", "opened", "was opening", "has opened"], ans: 1 }, // opened
+                    C: { options: ["greater", "great", "more great", "greatest"], ans: 0 }, // greater
+                    D: { options: ["miss", "have missed", "don't miss", "will miss"], ans: 2 }, // don't miss
+                    E: { options: ["to take", "took", "taking", "takes"], ans: 2 } // taking
+                }
+            }
+        ];
+
+        // --- APP STATE ---
+        const appState = {
+            currentTaskId: null,
+            userProgress: {}, // { taskId: { A: 1, B: 0, ... score: 5 } }
+        };
+
+        // --- CORE LOGIC ---
+        const app = {
+            init: () => {
+                app.loadProgress();
+                app.renderSidebar();
+                app.renderDashboard();
+                
+                // Mobile menu toggle
+                document.getElementById('mobile-menu-btn').addEventListener('click', () => {
+                    const sidebar = document.getElementById('sidebar');
+                    sidebar.classList.toggle('-translate-x-full');
+                });
+            },
+
+            loadProgress: () => {
+                const saved = localStorage.getItem('vpr_grammar_progress');
+                if (saved) {
+                    appState.userProgress = JSON.parse(saved);
+                }
+            },
+
+            saveProgress: () => {
+                localStorage.setItem('vpr_grammar_progress', JSON.stringify(appState.userProgress));
+                app.renderSidebarProgress();
+            },
+
+            // --- RENDERERS ---
+
+            renderSidebar: () => {
+                const list = document.getElementById('task-list');
+                list.innerHTML = grammarData.map(task => {
+                    const progress = appState.userProgress[task.id];
+                    const isDone = progress && progress.score === 5;
+                    const colorClass = isDone ? 'text-green-600 bg-green-50' : 'text-stone-600 hover:bg-stone-100';
+                    const icon = isDone ? '✓' : (progress ? '•' : (task.id + '.'));
+                    
+                    return `
+                        <button onclick="app.renderTask(${task.id})" class="w-full text-left px-4 py-3 rounded-lg flex items-center justify-between transition-colors ${colorClass}">
+                            <div class="flex items-center overflow-hidden">
+                                <span class="font-bold mr-3 w-6 flex-shrink-0 text-center">${icon}</span>
+                                <span class="truncate text-sm font-medium">${task.title}</span>
+                            </div>
+                            ${progress ? `<span class="text-xs font-bold ${progress.score === 5 ? 'text-green-600' : 'text-amber-600'}">${progress.score}/5</span>` : ''}
+                        </button>
+                    `;
+                }).join('');
+                app.renderSidebarProgress();
+            },
+
+            renderSidebarProgress: () => {
+                const total = grammarData.length;
+                const completed = Object.keys(appState.userProgress).length;
+                const percentage = (completed / total) * 100;
+                
+                document.getElementById('mini-progress-text').innerText = `${completed}/${total}`;
+                document.getElementById('mini-progress-bar').style.width = `${percentage}%`;
+            },
+
+            renderDashboard: () => {
+                appState.currentTaskId = null;
+                const main = document.getElementById('main-content');
+                const totalTasks = grammarData.length;
+                const attemptedTasks = Object.keys(appState.userProgress).length;
+                
+                let totalScore = 0;
+                let totalPossible = attemptedTasks * 5;
+                Object.values(appState.userProgress).forEach(p => totalScore += p.score);
+                const accuracy = totalPossible > 0 ? Math.round((totalScore / totalPossible) * 100) : 0;
+
+                main.innerHTML = `
+                    <div class="max-w-5xl mx-auto p-6 md:p-10">
+                        <!-- Welcome Section -->
+                        <div class="mb-10 text-center">
+                            <h2 class="text-4xl font-serif font-bold text-stone-800 mb-4">Welcome to Your Grammar Quest</h2>
+                            <p class="text-lg text-stone-600 max-w-2xl mx-auto">
+                                Master the 7th-grade VPR English grammar exam through interactive practice. 
+                                Select a task from the sidebar to begin.
+                            </p>
+                        </div>
+
+                        <!-- Stats Grid -->
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
+                            <div class="bg-white p-6 rounded-xl shadow-sm border border-stone-200 text-center">
+                                <p class="text-stone-500 text-sm uppercase font-bold tracking-wider">Tasks Started</p>
+                                <p class="text-4xl font-bold text-amber-600 mt-2">${attemptedTasks} <span class="text-lg text-stone-400">/ ${totalTasks}</span></p>
+                            </div>
+                            <div class="bg-white p-6 rounded-xl shadow-sm border border-stone-200 text-center">
+                                <p class="text-stone-500 text-sm uppercase font-bold tracking-wider">Total Score</p>
+                                <p class="text-4xl font-bold text-stone-800 mt-2">${totalScore}</p>
+                            </div>
+                            <div class="bg-white p-6 rounded-xl shadow-sm border border-stone-200 text-center">
+                                <p class="text-stone-500 text-sm uppercase font-bold tracking-wider">Accuracy</p>
+                                <p class="text-4xl font-bold ${accuracy >= 80 ? 'text-green-600' : 'text-blue-600'} mt-2">${accuracy}%</p>
+                            </div>
+                        </div>
+
+                        <!-- Visualizations -->
+                        <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                            
+                            <!-- Progress Overview Chart -->
+                            <div class="bg-white p-6 rounded-xl shadow-sm border border-stone-200">
+                                <h3 class="font-serif font-bold text-lg text-stone-800 mb-4 border-b border-stone-100 pb-2">Completion Status</h3>
+                                <div class="chart-container">
+                                    <canvas id="progressChart"></canvas>
+                                </div>
+                                <div class="mt-4 text-sm text-stone-500">
+                                    <p>Track your journey through the 26 grammar challenges.</p>
+                                </div>
+                            </div>
+
+                            <!-- Accuracy Radar Chart (Mock-up for concept) -->
+                            <div class="bg-white p-6 rounded-xl shadow-sm border border-stone-200">
+                                <h3 class="font-serif font-bold text-lg text-stone-800 mb-4 border-b border-stone-100 pb-2">Performance Metrics</h3>
+                                <div class="chart-container flex items-center justify-center">
+                                    <canvas id="accuracyChart"></canvas>
+                                </div>
+                                <div class="mt-4 text-sm text-stone-500">
+                                    <p>Visualizing your accuracy rate against total attempts.</p>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="mt-12 text-center">
+                            <button onclick="app.renderTask(1)" class="bg-amber-600 text-white px-8 py-3 rounded-full font-bold shadow-lg hover:bg-amber-700 transition transform hover:-translate-y-1">
+                                Start First Exercise &rarr;
+                            </button>
+                        </div>
+                    </div>
+                `;
+
+                // Initialize Charts
+                app.initCharts(attemptedTasks, totalTasks, accuracy);
+            },
+
+            initCharts: (attempted, total, accuracy) => {
+                // Doughnut: Completed vs Remaining
+                new Chart(document.getElementById('progressChart'), {
+                    type: 'doughnut',
+                    data: {
+                        labels: ['Completed', 'Remaining'],
+                        datasets: [{
+                            data: [attempted, total - attempted],
+                            backgroundColor: ['#d97706', '#e7e5e4'],
+                            borderWidth: 0,
+                            hoverOffset: 4
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: { position: 'bottom' }
+                        }
+                    }
+                });
+
+                // Bar: Accuracy Visualization
+                new Chart(document.getElementById('accuracyChart'), {
+                    type: 'bar',
+                    data: {
+                        labels: ['My Accuracy'],
+                        datasets: [{
+                            label: 'Percentage',
+                            data: [accuracy],
+                            backgroundColor: accuracy > 80 ? '#16a34a' : '#2563eb',
+                            barThickness: 50,
+                            borderRadius: 8
+                        }]
+                    },
+                    options: {
+                        indexAxis: 'y',
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        scales: {
+                            x: { min: 0, max: 100 }
+                        }
+                    }
+                });
+            },
+
+            renderTask: (id) => {
+                appState.currentTaskId = id;
+                const task = grammarData.find(t => t.id === id);
+                if (!task) return;
+
+                // Close sidebar on mobile
+                if (window.innerWidth < 768) {
+                    document.getElementById('sidebar').classList.add('-translate-x-full');
+                }
+
+                const main = document.getElementById('main-content');
+                
+                // Process text to insert interactive gaps
+                let processedText = task.text;
+                Object.keys(task.questions).forEach(key => {
+                    const savedChoice = appState.userProgress[id]?.answers?.[key];
+                    const label = savedChoice !== undefined 
+                        ? task.questions[key].options[savedChoice] 
+                        : `[${key}]`;
+                    
+                    const statusClass = appState.userProgress[id] 
+                        ? (savedChoice === task.questions[key].ans ? 'correct' : 'incorrect')
+                        : '';
+                        
+                    processedText = processedText.replace(
+                        `{${key}}`, 
+                        `<span id="gap-${key}" onclick="app.selectGap('${key}')" class="gap-slot ${statusClass}">${label}</span>`
+                    );
+                });
+
+                main.innerHTML = `
+                    <div class="max-w-6xl mx-auto h-full flex flex-col md:flex-row">
+                        
+                        <!-- Left Panel: Text & Context -->
+                        <div class="w-full md:w-3/5 p-6 md:p-10 overflow-y-auto">
+                            <div class="mb-6">
+                                <span class="bg-stone-200 text-stone-600 text-xs font-bold px-2 py-1 rounded uppercase tracking-wider">Task #${task.num}</span>
+                                <h2 class="text-3xl font-serif font-bold text-stone-800 mt-2">${task.title}</h2>
+                            </div>
+                            
+                            <div class="bg-white p-8 rounded-xl shadow-sm border border-stone-200 leading-loose text-lg font-serif text-stone-700">
+                                ${processedText}
+                            </div>
+                            
+                            <div class="mt-6 flex justify-between">
+                                <button ${id > 1 ? `onclick="app.renderTask(${id-1})"` : 'disabled'} class="text-stone-500 hover:text-stone-800 disabled:opacity-30 font-bold flex items-center">
+                                    &larr; Previous
+                                </button>
+                                <button ${id < grammarData.length ? `onclick="app.renderTask(${id+1})"` : 'disabled'} class="text-stone-500 hover:text-stone-800 disabled:opacity-30 font-bold flex items-center">
+                                    Next &rarr;
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Right Panel: Interaction Area -->
+                        <div class="w-full md:w-2/5 bg-white border-l border-stone-200 p-6 md:p-10 flex flex-col shadow-xl z-10">
+                            <div class="mb-6">
+                                <h3 class="font-bold text-stone-800 text-xl mb-1">Select Answers</h3>
+                                <p class="text-sm text-stone-500">Click a gap in the text or select below.</p>
+                            </div>
+
+                            <div id="options-container" class="space-y-6 flex-1 overflow-y-auto custom-scroll pr-2">
+                                ${Object.keys(task.questions).map(key => app.renderOptionGroup(task, key)).join('')}
+                            </div>
+
+                            <div class="mt-6 pt-6 border-t border-stone-100">
+                                <button onclick="app.checkAnswers(${id})" class="w-full bg-amber-600 hover:bg-amber-700 text-white font-bold py-4 rounded-xl shadow-lg transition-all active:scale-95 flex justify-center items-center">
+                                    <span>Check Answers</span>
+                                </button>
+                                <div id="feedback-area" class="mt-4 text-center hidden"></div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            },
+
+            renderOptionGroup: (task, key) => {
+                const q = task.questions[key];
+                const savedChoice = appState.userProgress[task.id]?.answers?.[key];
+
+                return `
+                    <div class="option-group" id="group-${key}">
+                        <div class="flex items-center mb-2">
+                            <span class="bg-stone-800 text-white text-xs font-bold w-6 h-6 flex items-center justify-center rounded-full mr-2">${key}</span>
+                            <span class="text-sm font-semibold text-stone-400">Select option for gap [${key}]</span>
+                        </div>
+                        <div class="grid grid-cols-1 gap-2">
+                            ${q.options.map((opt, idx) => `
+                                <button onclick="app.handleSelection('${key}', ${idx})" 
+                                    class="option-btn text-left px-4 py-3 rounded-lg border-2 transition-all duration-200 
+                                    ${savedChoice === idx ? 'border-amber-500 bg-amber-50 text-amber-900 font-bold shadow-sm' : 'border-stone-100 hover:border-stone-300 text-stone-600 bg-stone-50'}"
+                                    data-key="${key}" data-idx="${idx}">
+                                    ${opt}
+                                </button>
+                            `).join('')}
+                        </div>
+                    </div>
+                `;
+            },
+
+            handleSelection: (key, idx) => {
+                const taskId = appState.currentTaskId;
+                const task = grammarData.find(t => t.id === taskId);
+                
+                // Update Gap Text visually
+                const gapEl = document.getElementById(`gap-${key}`);
+                if(gapEl) {
+                    gapEl.innerText = task.questions[key].options[idx];
+                    gapEl.classList.add('filled');
+                    gapEl.classList.remove('correct', 'incorrect'); // Reset validation state on change
+                }
+
+                // Update Option Button visually
+                const group = document.getElementById(`group-${key}`);
+                group.querySelectorAll('.option-btn').forEach(btn => {
+                    btn.className = 'option-btn text-left px-4 py-3 rounded-lg border-2 border-stone-100 hover:border-stone-300 text-stone-600 bg-stone-50 transition-all duration-200';
+                });
+                const selectedBtn = group.querySelector(`button[data-idx="${idx}"]`);
+                selectedBtn.className = 'option-btn text-left px-4 py-3 rounded-lg border-2 border-amber-500 bg-amber-50 text-amber-900 font-bold shadow-sm transition-all duration-200';
+
+                // Save temp state (not persisted until check?) 
+                // Actually good UX to persist selection immediately in UI state but score only on check.
+                // For simplicity, we store temp selection in DOM or a temp object.
+                // Let's modify appState directly but not mark 'score' yet.
+                if (!appState.userProgress[taskId]) appState.userProgress[taskId] = { answers: {}, score: 0 };
+                appState.userProgress[taskId].answers[key] = idx;
+            },
+
+            selectGap: (key) => {
+                // Scroll option into view
+                const group = document.getElementById(`group-${key}`);
+                if (group) {
+                    group.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    // Highlight effect
+                    group.classList.add('ring-2', 'ring-amber-200', 'rounded-lg');
+                    setTimeout(() => group.classList.remove('ring-2', 'ring-amber-200'), 1000);
+                }
+            },
+
+            checkAnswers: (id) => {
+                const task = grammarData.find(t => t.id === id);
+                const progress = appState.userProgress[id] || { answers: {} };
+                const feedback = document.getElementById('feedback-area');
+                
+                let score = 0;
+                let allCorrect = true;
+
+                // Validate
+                Object.keys(task.questions).forEach(key => {
+                    const userAns = progress.answers[key];
+                    const correctAns = task.questions[key].ans;
+                    const gapEl = document.getElementById(`gap-${key}`);
+                    const group = document.getElementById(`group-${key}`);
+
+                    // Reset styling
+                    gapEl.classList.remove('correct', 'incorrect');
+                    
+                    if (userAns === correctAns) {
+                        score++;
+                        gapEl.classList.add('correct');
+                        // Add checkmark to option group
+                    } else {
+                        allCorrect = false;
+                        gapEl.classList.add('incorrect');
+                    }
+                });
+
+                // Save Score
+                appState.userProgress[id].score = score;
+                app.saveProgress();
+                app.renderSidebar(); // Update sidebar tick
+
+                // Show Feedback
+                feedback.classList.remove('hidden');
+                if (allCorrect) {
+                    feedback.innerHTML = `
+                        <div class="bg-green-100 text-green-800 p-3 rounded-lg font-bold border border-green-200">
+                            🎉 Perfect! 5/5 Correct.
+                        </div>
+                    `;
+                } else {
+                    feedback.innerHTML = `
+                        <div class="bg-amber-100 text-amber-800 p-3 rounded-lg font-bold border border-amber-200">
+                            You got ${score}/5 correct. <br> <span class="text-xs font-normal">Review the red items and try again!</span>
+                        </div>
+                    `;
+                }
+            }
+        };
+
+        // Initialize App
+        document.addEventListener('DOMContentLoaded', app.init);
+
+    </script>
+</body>
+</html>
