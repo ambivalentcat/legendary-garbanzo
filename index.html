@@ -491,6 +491,32 @@
             maxLives: 3,
             lives: 3,
             activeGapKey: null,
+            mode: 'training',
+            selectedTopic: 'all',
+            lastTaskId: null,
+            exam: {
+                timerDuration: 120,
+                timeLeft: 120,
+                timerId: null,
+                startedAt: null,
+                activeTaskId: null,
+            },
+            stats: {
+                attempts: 0,
+                totalMistakes: 0,
+                mistakesByTopic: {}
+            }
+        };
+
+        const TOPIC_LABELS = {
+            tenses: 'Времена',
+            pronouns: 'Местоимения',
+            comparison: 'Степени сравнения',
+            quantifiers: 'Количественные слова',
+            verbForms: 'Формы глагола',
+            conditionals: 'Условные конструкции',
+            prepositions: 'Предлоги',
+            wordFormation: 'Словообразование'
         };
 
         // --- CORE LOGIC ---
@@ -518,6 +544,10 @@
                     if (parsed && parsed.userProgress) {
                         appState.userProgress = parsed.userProgress;
                         appState.lives = typeof parsed.lives === 'number' ? parsed.lives : appState.maxLives;
+                        appState.mode = parsed.mode || appState.mode;
+                        appState.selectedTopic = parsed.selectedTopic || appState.selectedTopic;
+                        appState.lastTaskId = parsed.lastTaskId || null;
+                        appState.stats = parsed.stats || appState.stats;
                     } else {
                         // Backward compatibility for old format where only progress was stored.
                         appState.userProgress = parsed;
@@ -529,16 +559,90 @@
             saveProgress: () => {
                 localStorage.setItem('vpr_grammar_progress', JSON.stringify({
                     userProgress: appState.userProgress,
-                    lives: appState.lives
+                    lives: appState.lives,
+                    mode: appState.mode,
+                    selectedTopic: appState.selectedTopic,
+                    lastTaskId: appState.lastTaskId,
+                    progressPercent: app.getProgressPercent(),
+                    stats: appState.stats
                 }));
                 app.renderSidebarProgress();
+            },
+
+            getQuestionTopic: (question) => {
+                const options = question.options.map(opt => String(opt).toLowerCase());
+                const joined = options.join(' ');
+
+                if (options.some(opt => ['myself', 'ourselves', 'himself', 'herself', 'themselves', 'oneself'].includes(opt))) return 'pronouns';
+                if (options.some(opt => ['my', 'mine', 'your', 'yours', 'their', 'them', 'they', 'his', 'her', 'him'].includes(opt))) return 'pronouns';
+                if (options.some(opt => opt.endsWith('er') || opt.includes('more ') || opt.includes('most ') || opt.endsWith('est'))) return 'comparison';
+                if (options.some(opt => ['much', 'many', 'few', 'little', 'most'].includes(opt))) return 'quantifiers';
+                if (joined.includes("don't") || joined.includes("doesn't") || joined.includes("can't") || joined.includes("couldn't")) return 'verbForms';
+                if (joined.includes('will ') || joined.includes('has ') || joined.includes('have ') || joined.includes('was ') || joined.includes('were ') || joined.includes('did ')) return 'tenses';
+                if (options.some(opt => ['to take', 'taking', 'took', 'take'].includes(opt))) return 'verbForms';
+                if (joined.includes('if ')) return 'conditionals';
+                return 'wordFormation';
+            },
+
+            getTaskTopics: (task) => {
+                const unique = new Set(Object.values(task.questions).map(q => app.getQuestionTopic(q)));
+                return [...unique];
+            },
+
+            getFilteredTasks: () => {
+                if (appState.selectedTopic === 'all') {
+                    return grammarData;
+                }
+                return grammarData.filter(task => app.getTaskTopics(task).includes(appState.selectedTopic));
+            },
+
+            getProgressPercent: () => {
+                const total = grammarData.length;
+                if (!total) return 0;
+                return Math.round((Object.keys(appState.userProgress).length / total) * 100);
+            },
+
+            setMode: (mode) => {
+                appState.mode = mode;
+                app.saveProgress();
+                if (appState.currentTaskId) {
+                    app.renderTask(appState.currentTaskId);
+                } else {
+                    app.renderDashboard();
+                }
+            },
+
+            setTopicFilter: (topic) => {
+                appState.selectedTopic = topic;
+                app.saveProgress();
+                app.renderSidebar();
             },
 
             // --- RENDERERS ---
 
             renderSidebar: () => {
                 const list = document.getElementById('task-list');
-                list.innerHTML = grammarData.map(task => {
+                const filteredTasks = app.getFilteredTasks();
+                const allTopics = Object.entries(TOPIC_LABELS).map(([value, label]) => `<option value="${value}" ${appState.selectedTopic === value ? 'selected' : ''}>${label}</option>`).join('');
+
+                list.innerHTML = `
+                    <div class="bg-stone-100 rounded-lg p-3 mb-3 space-y-3">
+                        <div>
+                            <label class="text-xs font-bold text-stone-500 uppercase block mb-1">Режим</label>
+                            <div class="grid grid-cols-2 gap-2">
+                                <button onclick="app.setMode('training')" class="px-2 py-2 rounded text-xs font-bold ${appState.mode === 'training' ? 'bg-amber-600 text-white' : 'bg-white text-stone-700 border border-stone-200'}">Тренировка</button>
+                                <button onclick="app.setMode('exam')" class="px-2 py-2 rounded text-xs font-bold ${appState.mode === 'exam' ? 'bg-amber-600 text-white' : 'bg-white text-stone-700 border border-stone-200'}">Экзамен</button>
+                            </div>
+                        </div>
+                        <div>
+                            <label for="topic-filter" class="text-xs font-bold text-stone-500 uppercase block mb-1">Тема</label>
+                            <select id="topic-filter" onchange="app.setTopicFilter(this.value)" class="w-full px-2 py-2 rounded border border-stone-300 text-xs bg-white">
+                                <option value="all" ${appState.selectedTopic === 'all' ? 'selected' : ''}>Все темы</option>
+                                ${allTopics}
+                            </select>
+                        </div>
+                    </div>
+                    ${filteredTasks.map(task => {
                     const progress = appState.userProgress[task.id];
                     const isDone = progress && progress.score === 5;
                     const colorClass = isDone ? 'text-green-700 bg-green-100' : 'text-stone-700 hover:bg-stone-200';
@@ -553,7 +657,7 @@
                             ${progress ? `<span class="text-xs font-bold ${progress.score === 5 ? 'text-green-600' : 'text-amber-600'}">${progress.score}/5</span>` : ''}
                         </button>
                     `;
-                }).join('');
+                }).join('')}`;
                 app.renderSidebarProgress();
             },
 
@@ -568,14 +672,19 @@
 
             renderDashboard: () => {
                 appState.currentTaskId = null;
+                app.stopExamTimer();
                 const main = document.getElementById('main-content');
                 const totalTasks = grammarData.length;
                 const attemptedTasks = Object.keys(appState.userProgress).length;
+                const progressPercent = app.getProgressPercent();
                 
                 let totalScore = 0;
                 let totalPossible = attemptedTasks * 5;
                 Object.values(appState.userProgress).forEach(p => totalScore += p.score);
                 const accuracy = totalPossible > 0 ? Math.round((totalScore / totalPossible) * 100) : 0;
+                const topMistakes = Object.entries(appState.stats.mistakesByTopic || {})
+                    .sort((a, b) => b[1] - a[1])
+                    .slice(0, 4);
 
                 main.innerHTML = `
                     <div class="max-w-5xl mx-auto p-6 md:p-10">
@@ -607,6 +716,15 @@
                                 <p class="text-stone-500 text-sm uppercase font-bold tracking-wider">Lives</p>
                                 <p class="text-3xl font-bold text-red-500 mt-2">${'❤️'.repeat(appState.lives)}${'🩶'.repeat(Math.max(0, appState.maxLives - appState.lives))}</p>
                             </div>
+                            <div class="bg-white p-6 rounded-xl shadow-sm border border-stone-200 text-center">
+                                <p class="text-stone-500 text-sm uppercase font-bold tracking-wider">Progress</p>
+                                <p class="text-4xl font-bold text-amber-700 mt-2">${progressPercent}%</p>
+                            </div>
+                            <div class="bg-white p-6 rounded-xl shadow-sm border border-stone-200 text-center md:col-span-2">
+                                <p class="text-stone-500 text-sm uppercase font-bold tracking-wider">Last task</p>
+                                <p class="text-xl font-bold text-stone-800 mt-2">${appState.lastTaskId ? `#${appState.lastTaskId}` : '—'}</p>
+                                ${appState.lastTaskId ? `<button onclick="app.renderTask(${appState.lastTaskId})" class="mt-3 px-4 py-2 rounded-lg bg-stone-800 text-white text-sm">Продолжить</button>` : ''}
+                            </div>
                         </div>
 
                         <!-- Visualizations -->
@@ -633,6 +751,16 @@
                                     <p>Visualizing your accuracy rate against total attempts.</p>
                                 </div>
                             </div>
+                        </div>
+
+                        <div class="mt-8 bg-white p-6 rounded-xl shadow-sm border border-stone-200">
+                            <h3 class="font-serif font-bold text-lg text-stone-800 mb-3">Статистика ошибок</h3>
+                            <p class="text-sm text-stone-500 mb-4">Всего попыток: <span class="font-bold">${appState.stats.attempts}</span>, всего ошибок: <span class="font-bold">${appState.stats.totalMistakes}</span>.</p>
+                            ${topMistakes.length ? `
+                                <ul class="space-y-2 text-sm">
+                                    ${topMistakes.map(([topic, count]) => `<li class="flex justify-between bg-stone-50 px-3 py-2 rounded"><span>${TOPIC_LABELS[topic] || topic}</span><span class="font-bold">${count}</span></li>`).join('')}
+                                </ul>
+                            ` : '<p class="text-sm text-stone-400">Пока нет ошибок — продолжай в том же духе!</p>'}
                         </div>
                         
                         <div class="mt-12 text-center">
@@ -695,8 +823,11 @@
 
             renderTask: (id) => {
                 appState.currentTaskId = id;
+                appState.lastTaskId = id;
+                app.saveProgress();
                 const task = grammarData.find(t => t.id === id);
                 if (!task) return;
+                const taskTopics = app.getTaskTopics(task);
 
                 // Close sidebar on mobile
                 if (window.innerWidth < 768) {
@@ -714,7 +845,7 @@
                         : `[${key}]`;
                     
                     const statusClass = appState.userProgress[id] 
-                        ? (savedChoice === task.questions[key].ans ? 'correct' : 'incorrect')
+                        ? (appState.mode === 'training' && savedChoice === task.questions[key].ans ? 'correct' : (appState.mode === 'training' ? 'incorrect' : ''))
                         : '';
                         
                     processedText = processedText.replace(
@@ -730,7 +861,9 @@
                         <div class="w-full md:w-3/5 p-6 md:p-10 overflow-y-auto">
                             <div class="mb-6">
                                 <span class="bg-stone-200 text-stone-600 text-xs font-bold px-2 py-1 rounded uppercase tracking-wider">Task #${task.num}</span>
+                                <span class="bg-amber-100 text-amber-700 text-xs font-bold px-2 py-1 rounded uppercase tracking-wider ml-2">${appState.mode === 'exam' ? 'Exam' : 'Training'}</span>
                                 <h2 class="text-3xl font-serif font-bold text-stone-800 mt-2">${task.title}</h2>
+                                <div class="mt-2 flex flex-wrap gap-2">${taskTopics.map(topic => `<span class="text-xs px-2 py-1 rounded bg-stone-100 text-stone-600">${TOPIC_LABELS[topic]}</span>`).join('')}</div>
                             </div>
                             
                             <div class="bg-white p-8 rounded-xl shadow-sm border border-stone-200 leading-loose text-lg font-serif text-stone-700">
@@ -759,17 +892,24 @@
                             </div>
 
                             <div class="mt-6 pt-6 border-t border-stone-100">
+                                ${appState.mode === 'exam' ? `
+                                    <div class="mb-3 text-center text-sm font-semibold text-stone-600">
+                                        Таймер: <span id="exam-timer" class="text-amber-700">--:--</span>
+                                    </div>
+                                ` : ''}
                                 <div class="mb-3 text-center text-sm font-semibold text-stone-600">
                                     Lives: <span class="text-red-500">${'❤️'.repeat(appState.lives)}${'🩶'.repeat(Math.max(0, appState.maxLives - appState.lives))}</span>
                                 </div>
                                 <button onclick="app.checkAnswers(${id})" class="w-full bg-amber-700 hover:bg-amber-800 text-white font-bold py-4 rounded-xl shadow-lg transition-all active:scale-95 flex justify-center items-center" aria-label="Check answers for current task" role="button">
-                                    <span>Check Answers</span>
+                                    <span>${appState.mode === 'exam' ? 'Завершить задание' : 'Check Answers'}</span>
                                 </button>
                                 <div id="feedback-area" class="mt-4 text-center hidden" role="status" aria-live="polite" aria-atomic="true"></div>
                             </div>
                         </div>
                     </div>
                 `;
+
+                app.startExamTimer(id);
             },
 
             renderOptionGroup: (task, key) => {
@@ -887,13 +1027,91 @@
                 }
             },
 
-            checkAnswers: (id) => {
+            formatTime: (seconds) => {
+                const m = Math.floor(seconds / 60).toString().padStart(2, '0');
+                const s = (seconds % 60).toString().padStart(2, '0');
+                return `${m}:${s}`;
+            },
+
+            startExamTimer: (taskId) => {
+                app.stopExamTimer();
+                if (appState.mode !== 'exam') return;
+
+                appState.exam.activeTaskId = taskId;
+                appState.exam.timeLeft = appState.exam.timerDuration;
+                appState.exam.startedAt = Date.now();
+                const timerEl = document.getElementById('exam-timer');
+                if (timerEl) timerEl.innerText = app.formatTime(appState.exam.timeLeft);
+
+                appState.exam.timerId = setInterval(() => {
+                    appState.exam.timeLeft = Math.max(0, appState.exam.timeLeft - 1);
+                    const currentTimer = document.getElementById('exam-timer');
+                    if (currentTimer) currentTimer.innerText = app.formatTime(appState.exam.timeLeft);
+
+                    if (appState.exam.timeLeft === 0 && appState.currentTaskId === taskId) {
+                        app.checkAnswers(taskId, true);
+                    }
+                }, 1000);
+            },
+
+            stopExamTimer: () => {
+                if (appState.exam.timerId) {
+                    clearInterval(appState.exam.timerId);
+                    appState.exam.timerId = null;
+                }
+            },
+
+            buildQuestionAnalysis: (task, key, userAns) => {
+                const question = task.questions[key];
+                const correctIdx = question.ans;
+                const topic = app.getQuestionTopic(question);
+                const topicLabel = TOPIC_LABELS[topic] || 'Грамматика';
+                const correctOption = question.options[correctIdx];
+                const userOption = userAns === undefined ? 'нет ответа' : question.options[userAns];
+                const baseReason = {
+                    tenses: 'Здесь важна форма времени: ориентируйся на контекст и маркеры времени в предложении.',
+                    pronouns: 'Нужно выбрать правильную форму местоимения по роли в предложении (подлежащее/дополнение/притяжательная форма).',
+                    comparison: 'Используется корректная степень сравнения прилагательного/наречия.',
+                    quantifiers: 'Выбор зависит от исчисляемости существительного и смысла количества.',
+                    verbForms: 'Важно выбрать корректную форму глагола после контекста или конструкции.',
+                    conditionals: 'Обрати внимание на согласование времен в условной конструкции.',
+                    prepositions: 'Верный предлог выбирается по устойчивому сочетанию и контексту.',
+                    wordFormation: 'Правильный вариант определяется грамматической ролью слова в предложении.'
+                };
+
+                return {
+                    topic,
+                    isCorrect: userAns === correctIdx,
+                    html: `<li class="text-left bg-stone-50 border border-stone-200 rounded-lg p-3"><span class="font-bold">[${key}] ${topicLabel}:</span> твой ответ — <span class="text-red-600">${userOption}</span>, правильный — <span class="text-green-700 font-semibold">${correctOption}</span>.<br><span class="text-sm text-stone-600">Почему: ${baseReason[topic] || baseReason.wordFormation}</span></li>`
+                };
+            },
+
+            renderExamReport: (task, score, mistakes, timedOut = false) => {
+                const reportHtml = `
+                    <div class="bg-white border border-stone-200 rounded-xl p-5 text-left mt-4">
+                        <h4 class="font-bold text-stone-800 mb-2">Итоговый отчёт (${timedOut ? 'время вышло' : 'завершено'})</h4>
+                        <p class="text-sm text-stone-600 mb-3">Режим экзамена: без подсказок во время выбора, с ограничением по времени.</p>
+                        <div class="grid grid-cols-2 gap-3 text-sm">
+                            <div class="bg-stone-50 p-3 rounded">Баллы: <span class="font-bold">${score}/5</span></div>
+                            <div class="bg-stone-50 p-3 rounded">Ошибки: <span class="font-bold">${mistakes.length}</span></div>
+                        </div>
+                    </div>
+                `;
+                const feedback = document.getElementById('feedback-area');
+                feedback.classList.remove('hidden');
+                feedback.innerHTML = reportHtml;
+            },
+
+            checkAnswers: (id, timedOut = false) => {
                 const task = grammarData.find(t => t.id === id);
                 const progress = appState.userProgress[id] || { answers: {} };
                 const feedback = document.getElementById('feedback-area');
+                app.stopExamTimer();
                 
                 let score = 0;
                 let allCorrect = true;
+                const analysisRows = [];
+                const mistakeTopics = [];
                 if (!appState.userProgress[id]) {
                     appState.userProgress[id] = { answers: {}, score: 0 };
                 }
@@ -916,12 +1134,28 @@
                         allCorrect = false;
                         gapEl.classList.add('incorrect');
                     }
+
+                    const analysis = app.buildQuestionAnalysis(task, key, userAns);
+                    if (!analysis.isCorrect) {
+                        analysisRows.push(analysis.html);
+                        mistakeTopics.push(analysis.topic);
+                    }
                 });
 
                 // Save Score
                 appState.userProgress[id].score = score;
+                appState.stats.attempts += 1;
+                appState.stats.totalMistakes += (5 - score);
+                mistakeTopics.forEach(topic => {
+                    appState.stats.mistakesByTopic[topic] = (appState.stats.mistakesByTopic[topic] || 0) + 1;
+                });
                 app.saveProgress();
                 app.renderSidebar(); // Update sidebar tick
+
+                if (appState.mode === 'exam') {
+                    app.renderExamReport(task, score, analysisRows, timedOut);
+                    return;
+                }
 
                 // Show Feedback
                 feedback.classList.remove('hidden');
@@ -946,6 +1180,7 @@
                         <div class="bg-amber-100 text-amber-800 p-3 rounded-lg font-bold border border-amber-200">
                             You got ${score}/5 correct. <br> ${extraMessage}
                         </div>
+                        ${analysisRows.length ? `<div class="mt-4 text-left"><h4 class="font-bold text-stone-700 mb-2">Разбор ошибок</h4><ul class="space-y-2">${analysisRows.join('')}</ul></div>` : ''}
                     `;
                 }
             }
