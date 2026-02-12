@@ -516,6 +516,19 @@
                 app.renderSidebarProgress();
             },
 
+            resetProgressAndStats: () => {
+                const confirmReset = window.confirm('Сбросить весь прогресс и статистику? Это действие нельзя отменить.');
+                if (!confirmReset) return;
+
+                appState.userProgress = {};
+                appState.lives = appState.maxLives;
+
+                localStorage.removeItem('vpr_grammar_progress');
+                app.saveProgress();
+                app.renderSidebar();
+                app.renderDashboard();
+            },
+
             // --- RENDERERS ---
 
             renderSidebar: () => {
@@ -617,9 +630,12 @@
                             </div>
                         </div>
                         
-                        <div class="mt-12 text-center">
+                        <div class="mt-12 flex flex-col sm:flex-row gap-3 justify-center">
                             <button onclick="app.renderTask(1)" class="bg-amber-600 text-white px-8 py-3 rounded-full font-bold shadow-lg hover:bg-amber-700 transition transform hover:-translate-y-1">
                                 Start First Exercise &rarr;
+                            </button>
+                            <button onclick="app.resetProgressAndStats()" class="bg-red-100 text-red-700 border border-red-300 px-8 py-3 rounded-full font-bold hover:bg-red-200 transition">
+                                Сбросить прогресс и статистику
                             </button>
                         </div>
                     </div>
