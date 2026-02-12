@@ -491,11 +491,33 @@
             maxLives: 3,
             lives: 3,
             activeGapKey: null,
+            mode: 'training',
+            selectedThemes: [],
+            lastTaskId: null,
+            completionPercent: 0,
+            errorStats: {},
+            examDurationSec: 900,
+            examRemainingSec: 900,
+            examTimerId: null,
+            examResults: {},
+            examStarted: false,
+        };
+
+        const themeLabels = {
+            tenses: 'Времена',
+            pronouns: 'Местоимения',
+            comparison: 'Степени сравнения',
+            quantifiers: 'Количественные слова',
+            nouns: 'Существительные',
+            verbForms: 'Формы глагола'
         };
 
         // --- CORE LOGIC ---
         const app = {
             init: () => {
+                grammarData.forEach(task => {
+                    task.themes = app.inferTaskThemes(task);
+                });
                 app.loadProgress();
                 app.renderSidebar();
                 app.renderDashboard();
@@ -518,48 +540,213 @@
                     if (parsed && parsed.userProgress) {
                         appState.userProgress = parsed.userProgress;
                         appState.lives = typeof parsed.lives === 'number' ? parsed.lives : appState.maxLives;
+                        appState.mode = parsed.mode || 'training';
+                        appState.selectedThemes = parsed.selectedThemes || [];
+                        appState.lastTaskId = parsed.lastTaskId || null;
+                        appState.completionPercent = parsed.completionPercent || 0;
+                        appState.errorStats = parsed.errorStats || {};
                     } else {
                         // Backward compatibility for old format where only progress was stored.
                         appState.userProgress = parsed;
                         appState.lives = appState.maxLives;
                     }
                 }
+                app.updateCompletionPercent();
             },
 
             saveProgress: () => {
+                app.updateCompletionPercent();
                 localStorage.setItem('vpr_grammar_progress', JSON.stringify({
                     userProgress: appState.userProgress,
-                    lives: appState.lives
+                    lives: appState.lives,
+                    mode: appState.mode,
+                    selectedThemes: appState.selectedThemes,
+                    lastTaskId: appState.lastTaskId,
+                    completionPercent: appState.completionPercent,
+                    errorStats: appState.errorStats
                 }));
                 app.renderSidebarProgress();
+            },
+
+
+            inferQuestionTheme: (options, correctIndex) => {
+                const normalized = options.map(opt => opt.toLowerCase());
+                const correct = normalized[correctIndex] || '';
+                if (normalized.some(opt => ['my','your','his','her','our','their','its','me','him','them','us','i','she','he','they','we'].includes(opt))) return 'pronouns';
+                if (normalized.some(opt => ['more','most','less','least','better','best','worse','worst','harder','older','elder','eldest','oldest','greater'].includes(opt) || opt.endsWith('er') || opt.endsWith('est'))) return 'comparison';
+                if (normalized.some(opt => ['much','many','few','little','more','most'].includes(opt))) return 'quantifiers';
+                if (normalized.some(opt => opt.includes("'s") || opt.endsWith('s') || opt.endsWith("s'"))) return 'nouns';
+                if (normalized.some(opt => ['is','are','was','were','be','been','being'].includes(opt) || opt.includes('will ') || opt.includes('have '))) return 'tenses';
+                if (correct.endsWith('ing') || correct.startsWith('to ')) return 'verbForms';
+                return 'verbForms';
+            },
+
+            inferTaskThemes: (task) => {
+                const themes = new Set();
+                Object.values(task.questions).forEach(question => {
+                    themes.add(app.inferQuestionTheme(question.options, question.ans));
+                });
+                return Array.from(themes);
+            },
+
+            getVisibleTasks: () => {
+                if (!appState.selectedThemes.length) return grammarData;
+                return grammarData.filter(task => task.themes?.some(theme => appState.selectedThemes.includes(theme)));
+            },
+
+
+
+            startFromVisibleTasks: () => {
+                const tasks = app.getVisibleTasks();
+                if (!tasks.length) return;
+                app.renderTask(tasks[0].id);
+            },
+
+            updateCompletionPercent: () => {
+                appState.completionPercent = Math.round((Object.keys(appState.userProgress).length / grammarData.length) * 100);
+            },
+
+            updateErrorStats: (theme) => {
+                appState.errorStats[theme] = (appState.errorStats[theme] || 0) + 1;
+            },
+
+            setMode: (mode) => {
+                appState.mode = mode;
+                if (mode === 'exam') {
+                    app.stopExamTimer();
+                    appState.examStarted = false;
+                    appState.examResults = {};
+                    appState.examRemainingSec = appState.examDurationSec;
+                }
+                if (mode === 'training') {
+                    app.stopExamTimer();
+                    appState.examStarted = false;
+                    appState.examResults = {};
+                    appState.examRemainingSec = appState.examDurationSec;
+                }
+                app.saveProgress();
+                if (appState.currentTaskId) app.renderTask(appState.currentTaskId);
+                else app.renderDashboard();
+                app.renderSidebar();
+            },
+
+            toggleTheme: (theme) => {
+                if (appState.selectedThemes.includes(theme)) appState.selectedThemes = appState.selectedThemes.filter(item => item !== theme);
+                else appState.selectedThemes.push(theme);
+                app.saveProgress();
+                app.renderSidebar();
+                if (!appState.currentTaskId) app.renderDashboard();
+            },
+
+            startExamTimer: () => {
+                if (appState.examTimerId) return;
+                appState.examStarted = true;
+                appState.examTimerId = setInterval(() => {
+                    appState.examRemainingSec = Math.max(0, appState.examRemainingSec - 1);
+                    const timer = document.getElementById('exam-timer');
+                    if (timer) timer.innerText = app.formatTime(appState.examRemainingSec);
+                    if (appState.examRemainingSec === 0) app.finishExam(true);
+                }, 1000);
+            },
+
+            stopExamTimer: () => {
+                if (appState.examTimerId) {
+                    clearInterval(appState.examTimerId);
+                    appState.examTimerId = null;
+                }
+            },
+
+            formatTime: (seconds) => {
+                const m = Math.floor(seconds / 60).toString().padStart(2, '0');
+                const sec = (seconds % 60).toString().padStart(2, '0');
+                return `${m}:${sec}`;
+            },
+
+            finishExam: (timeUp = false) => {
+                app.stopExamTimer();
+                const tasks = app.getVisibleTasks();
+                const attempted = Object.keys(appState.examResults).length;
+                let totalScore = 0;
+                let totalMistakes = [];
+                Object.values(appState.examResults).forEach(item => {
+                    totalScore += item.score;
+                    totalMistakes = totalMistakes.concat(item.mistakes);
+                });
+                const maxScore = attempted * 5;
+                const accuracy = maxScore ? Math.round((totalScore / maxScore) * 100) : 0;
+                const main = document.getElementById('main-content');
+                main.innerHTML = `
+                    <div class="max-w-4xl mx-auto p-6 md:p-10">
+                        <h2 class="text-3xl font-serif font-bold mb-4">Итоговый отчёт экзамена</h2>
+                        <p class="text-stone-600 mb-6">${timeUp ? 'Время вышло.' : 'Экзамен завершён.'} Выполнено заданий: ${attempted}/${tasks.length}.</p>
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+                            <div class="bg-white border border-stone-200 rounded-xl p-4"><p class="text-xs uppercase text-stone-400">Баллы</p><p class="text-2xl font-bold">${totalScore}</p></div>
+                            <div class="bg-white border border-stone-200 rounded-xl p-4"><p class="text-xs uppercase text-stone-400">Точность</p><p class="text-2xl font-bold">${accuracy}%</p></div>
+                            <div class="bg-white border border-stone-200 rounded-xl p-4"><p class="text-xs uppercase text-stone-400">Ошибки</p><p class="text-2xl font-bold">${totalMistakes.length}</p></div>
+                        </div>
+                        <div class="bg-white border border-stone-200 rounded-xl p-5">
+                            <h3 class="font-bold mb-3">Разбор ошибок</h3>
+                            ${totalMistakes.length ? `<ul class="space-y-2 text-sm">${totalMistakes.map(item => `<li>• ${item}</li>`).join('')}</ul>` : '<p class="text-green-700 font-semibold">Ошибок нет. Отличная работа!</p>'}
+                        </div>
+                        <div class="mt-6"><button onclick="app.setMode('training')" class="bg-amber-700 text-white px-6 py-3 rounded-lg font-bold">Вернуться в тренировку</button></div>
+                    </div>
+                `;
+            },
+
+            getExplanation: (task, key, userAns) => {
+                const question = task.questions[key];
+                const rightWord = question.options[question.ans];
+                const userWord = userAns === undefined ? '—' : question.options[userAns];
+                const theme = app.inferQuestionTheme(question.options, question.ans);
+                const themeExplanation = {
+                    tenses: 'здесь важна правильная временная форма и согласование с контекстом предложения',
+                    pronouns: 'нужно выбрать местоимение в правильной форме (субъект/объект/притяжательная)',
+                    comparison: 'используется корректная степень сравнения прилагательного или наречия',
+                    quantifiers: 'подбирается количественное слово по смыслу и типу существительного',
+                    nouns: 'нужна правильная форма существительного: число или притяжательный падеж',
+                    verbForms: 'нужна грамматически корректная форма глагола после данного контекста'
+                };
+                return `[${key}] Правильно: «${rightWord}», ваш ответ: «${userWord}», потому что ${themeExplanation[theme]}.`;
             },
 
             // --- RENDERERS ---
 
             renderSidebar: () => {
                 const list = document.getElementById('task-list');
-                list.innerHTML = grammarData.map(task => {
-                    const progress = appState.userProgress[task.id];
-                    const isDone = progress && progress.score === 5;
-                    const colorClass = isDone ? 'text-green-700 bg-green-100' : 'text-stone-700 hover:bg-stone-200';
-                    const icon = isDone ? '✓' : (progress ? '•' : (task.id + '.'));
-                    
-                    return `
-                        <button onclick="app.renderTask(${task.id})" class="w-full text-left px-4 py-3 rounded-lg flex items-center justify-between transition-colors ${colorClass}" aria-label="Open task ${task.id}: ${task.title}" role="button">
-                            <div class="flex items-center overflow-hidden">
-                                <span class="font-bold mr-3 w-6 flex-shrink-0 text-center">${icon}</span>
-                                <span class="truncate text-sm font-medium">${task.title}</span>
-                            </div>
-                            ${progress ? `<span class="text-xs font-bold ${progress.score === 5 ? 'text-green-600' : 'text-amber-600'}">${progress.score}/5</span>` : ''}
-                        </button>
-                    `;
-                }).join('');
+                const visibleTasks = app.getVisibleTasks();
+                const themeButtons = Object.entries(themeLabels).map(([key, label]) => `
+                    <button onclick="app.toggleTheme('${key}')" class="px-2 py-1 text-xs rounded-full border ${appState.selectedThemes.includes(key) ? 'bg-amber-200 border-amber-600 text-amber-900' : 'bg-white border-stone-300 text-stone-600'}">${label}</button>
+                `).join('');
+
+                list.innerHTML = `
+                    <div class="mb-4">
+                        <p class="text-xs font-bold text-stone-400 uppercase mb-2">Режим</p>
+                        <div class="grid grid-cols-2 gap-2">
+                            <button onclick="app.setMode('training')" class="px-3 py-2 text-xs rounded-lg border ${appState.mode === 'training' ? 'bg-green-100 border-green-500 text-green-800 font-bold' : 'bg-white border-stone-300'}">Тренировка</button>
+                            <button onclick="app.setMode('exam')" class="px-3 py-2 text-xs rounded-lg border ${appState.mode === 'exam' ? 'bg-blue-100 border-blue-500 text-blue-800 font-bold' : 'bg-white border-stone-300'}">Экзамен</button>
+                        </div>
+                        <p class="text-xs font-bold text-stone-400 uppercase mt-4 mb-2">Фильтры по темам</p>
+                        <div class="flex flex-wrap gap-2">${themeButtons}</div>
+                    </div>
+                    ${visibleTasks.length ? visibleTasks.map(task => {
+                        const progress = appState.userProgress[task.id];
+                        const isDone = progress && progress.score === 5;
+                        const colorClass = isDone ? 'text-green-700 bg-green-100' : 'text-stone-700 hover:bg-stone-200';
+                        const icon = isDone ? '✓' : (progress ? '•' : (task.id + '.'));
+                        return `
+                            <button onclick="app.renderTask(${task.id})" class="w-full text-left px-4 py-3 rounded-lg flex items-center justify-between transition-colors ${colorClass}" aria-label="Open task ${task.id}: ${task.title}" role="button">
+                                <div class="flex items-center overflow-hidden"><span class="font-bold mr-3 w-6 flex-shrink-0 text-center">${icon}</span><span class="truncate text-sm font-medium">${task.title}</span></div>
+                                ${progress ? `<span class="text-xs font-bold ${progress.score === 5 ? 'text-green-600' : 'text-amber-600'}">${progress.score}/5</span>` : ''}
+                            </button>
+                        `;
+                    }).join('') : '<p class="text-xs text-stone-500">Нет заданий для выбранных тем.</p>'}
+                `;
                 app.renderSidebarProgress();
             },
 
             renderSidebarProgress: () => {
                 const total = grammarData.length;
-                const completed = Object.keys(appState.userProgress).length;
+                const completed = Math.round((appState.completionPercent / 100) * grammarData.length);
                 const percentage = (completed / total) * 100;
                 
                 document.getElementById('mini-progress-text').innerText = `${completed}/${total}`;
@@ -587,6 +774,7 @@
                                 Select a task from the sidebar to begin.
                             </p>
                             <p class="text-sm font-semibold text-amber-700 mt-3">Ты справишься, ${appState.playerName}! У тебя ${appState.lives}/${appState.maxLives} жизни.</p>
+                            <p class="text-sm text-stone-500 mt-2">Последнее задание: ${appState.lastTaskId || '—'} • Прогресс: ${appState.completionPercent}%</p>
                         </div>
 
                         <!-- Stats Grid -->
@@ -636,7 +824,7 @@
                         </div>
                         
                         <div class="mt-12 text-center">
-                            <button onclick="app.renderTask(1)" class="bg-amber-600 text-white px-8 py-3 rounded-full font-bold shadow-lg hover:bg-amber-700 transition transform hover:-translate-y-1">
+                            <button onclick="app.startFromVisibleTasks()" class="bg-amber-600 text-white px-8 py-3 rounded-full font-bold shadow-lg hover:bg-amber-700 transition transform hover:-translate-y-1">
                                 Start First Exercise &rarr;
                             </button>
                         </div>
@@ -695,6 +883,8 @@
 
             renderTask: (id) => {
                 appState.currentTaskId = id;
+                appState.lastTaskId = id;
+                app.saveProgress();
                 const task = grammarData.find(t => t.id === id);
                 if (!task) return;
 
@@ -713,7 +903,7 @@
                         ? task.questions[key].options[savedChoice] 
                         : `[${key}]`;
                     
-                    const statusClass = appState.userProgress[id] 
+                    const statusClass = (appState.mode === 'training' && appState.userProgress[id]?.checked)
                         ? (savedChoice === task.questions[key].ans ? 'correct' : 'incorrect')
                         : '';
                         
@@ -738,10 +928,10 @@
                             </div>
                             
                             <div class="mt-6 flex justify-between">
-                                <button ${id > 1 ? `onclick="app.renderTask(${id-1})"` : 'disabled'} class="text-stone-700 hover:text-stone-900 disabled:opacity-100 font-bold flex items-center">
+                                <button ${app.getAdjacentTaskId(id, -1) ? `onclick="app.renderTask(${app.getAdjacentTaskId(id, -1)})"` : 'disabled'} class="text-stone-700 hover:text-stone-900 disabled:opacity-100 font-bold flex items-center">
                                     &larr; Previous
                                 </button>
-                                <button ${id < grammarData.length ? `onclick="app.renderTask(${id+1})"` : 'disabled'} class="text-stone-700 hover:text-stone-900 disabled:opacity-100 font-bold flex items-center">
+                                <button ${app.getAdjacentTaskId(id, 1) ? `onclick="app.renderTask(${app.getAdjacentTaskId(id, 1)})"` : 'disabled'} class="text-stone-700 hover:text-stone-900 disabled:opacity-100 font-bold flex items-center">
                                     Next &rarr;
                                 </button>
                             </div>
@@ -751,6 +941,8 @@
                         <div class="w-full md:w-2/5 bg-white border-l border-stone-200 p-6 md:p-10 flex flex-col shadow-xl z-10">
                             <div class="mb-6">
                                 <h3 class="font-bold text-stone-800 text-xl mb-1">Select Answers</h3>
+                                <p class="text-xs font-bold uppercase text-stone-400">Режим: ${appState.mode === "exam" ? "Экзамен" : "Тренировка"}</p>
+                                ${appState.mode === "exam" ? `<p class="text-sm font-bold text-blue-700 mt-2">Таймер: <span id="exam-timer">${app.formatTime(appState.examRemainingSec)}</span></p>` : ""}
                                 <p class="text-sm text-stone-500">Use Tab to move, Enter to pick, Escape to return to the gap.</p>
                             </div>
 
@@ -760,7 +952,7 @@
 
                             <div class="mt-6 pt-6 border-t border-stone-100">
                                 <div class="mb-3 text-center text-sm font-semibold text-stone-600">
-                                    Lives: <span class="text-red-500">${'❤️'.repeat(appState.lives)}${'🩶'.repeat(Math.max(0, appState.maxLives - appState.lives))}</span>
+                                    ${appState.mode === 'training' ? `Lives: <span class="text-red-500">${'❤️'.repeat(appState.lives)}${'🩶'.repeat(Math.max(0, appState.maxLives - appState.lives))}</span>` : `<span class="text-blue-700">Подсказки отключены</span>`}
                                 </div>
                                 <button onclick="app.checkAnswers(${id})" class="w-full bg-amber-700 hover:bg-amber-800 text-white font-bold py-4 rounded-xl shadow-lg transition-all active:scale-95 flex justify-center items-center" aria-label="Check answers for current task" role="button">
                                     <span>Check Answers</span>
@@ -770,6 +962,8 @@
                         </div>
                     </div>
                 `;
+
+                if (appState.mode === 'exam' && !appState.examStarted) app.startExamTimer();
             },
 
             renderOptionGroup: (task, key) => {
@@ -796,6 +990,15 @@
                 `;
             },
 
+
+
+
+            getAdjacentTaskId: (currentId, shift) => {
+                const tasks = app.getVisibleTasks();
+                const idx = tasks.findIndex(task => task.id === currentId);
+                if (idx === -1) return null;
+                return tasks[idx + shift]?.id || null;
+            },
 
             handleTaskPanelKeydown: (event) => {
                 if (event.key !== 'Escape' || !appState.activeGapKey) return;
@@ -854,8 +1057,9 @@
                 // Actually good UX to persist selection immediately in UI state but score only on check.
                 // For simplicity, we store temp selection in DOM or a temp object.
                 // Let's modify appState directly but not mark 'score' yet.
-                if (!appState.userProgress[taskId]) appState.userProgress[taskId] = { answers: {}, score: 0 };
+                if (!appState.userProgress[taskId]) appState.userProgress[taskId] = { answers: {}, score: 0, checked: false };
                 appState.userProgress[taskId].answers[key] = idx;
+                appState.userProgress[taskId].checked = false;
                 app.saveProgress();
             },
 
@@ -891,46 +1095,53 @@
                 const task = grammarData.find(t => t.id === id);
                 const progress = appState.userProgress[id] || { answers: {} };
                 const feedback = document.getElementById('feedback-area');
-                
                 let score = 0;
                 let allCorrect = true;
+                const mistakes = [];
+
                 if (!appState.userProgress[id]) {
-                    appState.userProgress[id] = { answers: {}, score: 0 };
+                    appState.userProgress[id] = { answers: {}, score: 0, checked: false };
                 }
 
-                // Validate
                 Object.keys(task.questions).forEach(key => {
                     const userAns = progress.answers[key];
                     const correctAns = task.questions[key].ans;
                     const gapEl = document.getElementById(`gap-${key}`);
-                    const group = document.getElementById(`group-${key}`);
-
-                    // Reset styling
                     gapEl.classList.remove('correct', 'incorrect');
-                    
+
                     if (userAns === correctAns) {
                         score++;
-                        gapEl.classList.add('correct');
-                        // Add checkmark to option group
+                        if (appState.mode === 'training') gapEl.classList.add('correct');
                     } else {
                         allCorrect = false;
-                        gapEl.classList.add('incorrect');
+                        if (appState.mode === 'training') gapEl.classList.add('incorrect');
+                        const theme = app.inferQuestionTheme(task.questions[key].options, correctAns);
+                        app.updateErrorStats(theme);
+                        mistakes.push(app.getExplanation(task, key, userAns));
                     }
                 });
 
-                // Save Score
                 appState.userProgress[id].score = score;
+                appState.userProgress[id].checked = true;
                 app.saveProgress();
-                app.renderSidebar(); // Update sidebar tick
-
-                // Show Feedback
+                app.renderSidebar();
                 feedback.classList.remove('hidden');
+
+                if (appState.mode === 'exam') {
+                    appState.examResults[id] = { score, mistakes };
+                    feedback.innerHTML = `<div class="bg-blue-100 text-blue-800 p-3 rounded-lg font-bold border border-blue-200">Ответ принят: ${score}/5. Переход к следующему заданию...</div>`;
+                    const visible = app.getVisibleTasks();
+                    const currentIndex = visible.findIndex(t => t.id === id);
+                    const next = visible[currentIndex + 1];
+                    setTimeout(() => {
+                        if (next) app.renderTask(next.id);
+                        else app.finishExam(false);
+                    }, 900);
+                    return;
+                }
+
                 if (allCorrect) {
-                    feedback.innerHTML = `
-                        <div class="bg-green-100 text-green-800 p-3 rounded-lg font-bold border border-green-200">
-                            🎉 Perfect! 5/5 Correct.
-                        </div>
-                    `;
+                    feedback.innerHTML = `<div class="bg-green-100 text-green-800 p-3 rounded-lg font-bold border border-green-200">🎉 Perfect! 5/5 Correct.</div>`;
                 } else {
                     appState.lives = Math.max(0, appState.lives - 1);
                     let extraMessage = `<span class="text-xs font-normal">Lives left: ${appState.lives}/${appState.maxLives}. Review the red items and try again!</span>`;
@@ -945,6 +1156,10 @@
                     feedback.innerHTML = `
                         <div class="bg-amber-100 text-amber-800 p-3 rounded-lg font-bold border border-amber-200">
                             You got ${score}/5 correct. <br> ${extraMessage}
+                        </div>
+                        <div class="mt-3 text-left bg-stone-100 border border-stone-200 rounded-lg p-3">
+                            <p class="font-bold text-stone-700 mb-2">Разбор ошибок:</p>
+                            <ul class="text-sm text-stone-700 space-y-1">${mistakes.map(item => `<li>• ${item}</li>`).join('')}</ul>
                         </div>
                     `;
                 }
